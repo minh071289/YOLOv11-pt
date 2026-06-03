@@ -14,12 +14,13 @@ pip install tqdm
 ### Train
 
 * Configure your dataset path in `main.py` for training
-* Run `bash main.sh $ --train` for training, `$` is number of GPUs
+* Run `bash main.sh $ --train --model n` for training, `$` is number of GPUs
+* Available model scales are `n`, `s`, `m`, `l`, and `x`
 
 ### Test
 
 * Configure your dataset path in `main.py` for testing
-* Run `python main.py --test` for testing
+* Run `python main.py --test --model n` for testing
 
 ### Results
 
@@ -49,6 +50,7 @@ pip install tqdm
 
 * `*` means that it is from original repository, see reference
 * In the official YOLOv11 code, mask annotation information is used, which leads to higher performance
+* The validation metrics in this repo are internal AP estimates from `utils/util.py`, not official COCOeval AP
 
 ### Dataset structure
 

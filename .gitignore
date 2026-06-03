@@ -1,0 +1,4 @@
+__pycache__/
+.torch-cache/
+.venv/
+weights/

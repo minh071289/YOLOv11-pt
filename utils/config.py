@@ -1,0 +1,65 @@
+from pathlib import Path
+
+import yaml
+
+
+DEFAULT_CONFIG = {
+    'model': {
+        'backbone': 'resnet50',
+        'pretrained_backbone': True,
+        'input_size': 640,
+    },
+    'training': {
+        'epochs': 50,
+        'batch_size': 8,
+        'num_workers': 4,
+        'lr': 1e-3,
+        'backbone_lr': 1e-4,
+        'weight_decay': 5e-4,
+        'warmup_epochs': 5,
+        'val_interval': 5,
+    },
+    'inference': {
+        'confidence': 0.25,
+        'iou': 0.50,
+    },
+    'loss': {
+        'box': 7.5,
+        'cls': 0.5,
+        'dfl': 1.5,
+    },
+    'augmentation': {
+        'flip_lr': 0.5,
+        'hsv_h': 0.015,
+        'hsv_s': 0.7,
+        'hsv_v': 0.4,
+        'translate': 0.10,
+        'scale': 0.20,
+    },
+}
+
+
+def deep_update(base, update):
+    for key, value in update.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
+def load_config(config_path='config/hyperparameters.yaml'):
+    config = deep_update({}, DEFAULT_CONFIG)
+    path = Path(config_path)
+    if path.exists():
+        with path.open('r', encoding='utf-8') as file:
+            loaded = yaml.safe_load(file) or {}
+        deep_update(config, loaded)
+    return config
+
+
+def flatten_training_params(config):
+    params = {}
+    params.update(config.get('loss', {}))
+    params.update(config.get('augmentation', {}))
+    return params

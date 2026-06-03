@@ -9,7 +9,7 @@ import tqdm
 import yaml
 from torch.utils import data
 
-from nets import nn
+from nets import legacy_nn
 from utils import util
 from utils.dataset import Dataset
 
@@ -20,7 +20,7 @@ data_dir = '../Dataset/COCO'
 
 def train(args, params):
     # Model
-    model = nn.yolo_v11_n(len(params['names']))
+    model = legacy_nn.build_model(args.model, len(params['names']))
     model.cuda()
 
     # Optimizer
@@ -114,7 +114,7 @@ def train(args, params):
                 amp_scale.scale(loss_box + loss_cls + loss_dfl).backward()
 
                 # Optimize
-                if step % accumulate == 0:
+                if (step + 1) % accumulate == 0:
                     # amp_scale.unscale_(optimizer)  # unscale gradients
                     # util.clip_gradients(model)  # clip gradients
                     amp_scale.step(optimizer)  # optimizer.step
@@ -242,7 +242,7 @@ def test(args, params, model=None):
 def profile(args, params):
     import thop
     shape = (1, 3, args.input_size, args.input_size)
-    model = nn.yolo_v11_n(len(params['names'])).fuse()
+    model = legacy_nn.build_model(args.model, len(params['names'])).fuse()
 
     model.eval()
     model(torch.zeros(shape))
@@ -260,6 +260,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--input-size', default=640, type=int)
     parser.add_argument('--batch-size', default=32, type=int)
+    parser.add_argument('--model', default='n', choices=['n', 's', 'm', 'l', 'x'])
     parser.add_argument('--local-rank', default=0, type=int)
     parser.add_argument('--local_rank', default=0, type=int)
     parser.add_argument('--epochs', default=600, type=int)

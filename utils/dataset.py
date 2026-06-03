@@ -95,11 +95,6 @@ class Dataset(data.Dataset):
     def load_image(self, i):
         image = cv2.imread(self.filenames[i])
         h, w = image.shape[:2]
-        r = self.input_size / max(h, w)
-        if r != 1:
-            image = cv2.resize(image,
-                               dsize=(int(w * r), int(h * r)),
-                               interpolation=resample() if self.augment else cv2.INTER_LINEAR)
         return image, (h, w)
 
     def load_mosaic(self, index, params):
@@ -295,7 +290,7 @@ def resize(image, input_size, augment):
 
     # Scale ratio (new / old)
     r = min(input_size / shape[0], input_size / shape[1])
-    if not augment:  # only scale down, do not scale up (for better val mAP)
+    if not augment:  # only scale down, do not scale up (for better internal val AP)
         r = min(r, 1.0)
 
     # Compute padding

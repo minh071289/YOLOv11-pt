@@ -90,13 +90,14 @@ def make_anchors(x, strides, offset=0.5):
         _, _, h, w = x[i].shape
         sx = torch.arange(end=w, device=device, dtype=dtype) + offset  # shift x
         sy = torch.arange(end=h, device=device, dtype=dtype) + offset  # shift y
-        sy, sx = torch.meshgrid(sy, sx)
+        sy, sx = torch.meshgrid(sy, sx, indexing='ij')
         anchor_tensor.append(torch.stack((sx, sy), -1).view(-1, 2))
         stride_tensor.append(torch.full((h * w, 1), stride, dtype=dtype, device=device))
     return torch.cat(anchor_tensor), torch.cat(stride_tensor)
 
 
 def compute_metric(output, target, iou_v):
+    # Internal AP matching uses plain IoU between predicted and target boxes.
     # intersection(N,M) = (rb(N,M,2) - lt(N,M,2)).clamp(0).prod(2)
     (a1, a2) = target[:, 1:].unsqueeze(1).chunk(2, 2)
     (b1, b2) = output[:, :4].unsqueeze(0).chunk(2, 2)
@@ -226,6 +227,7 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
     """
     Compute the average precision, given the recall and precision curves.
     Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
+    This is an internal AP approximation used by this repo, not COCOeval.
     # Arguments
         tp:  True positives (nparray, nx1 or nx10).
         conf:  Object-ness value from 0-1 (nparray).
@@ -277,7 +279,7 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
 
             # Integrate area under curve
             x = numpy.linspace(start=0, stop=1, num=101)  # 101-point interp (COCO)
-            ap[ci, j] = numpy.trapz(numpy.interp(x, m_rec, m_pre), x)  # integrate
+            ap[ci, j] = numpy.trapezoid(numpy.interp(x, m_rec, m_pre), x)  # integrate
             if plot and j == 0:
                 py.append(numpy.interp(px, m_rec, m_pre))  # precision at mAP@0.5
 
@@ -300,8 +302,8 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
     return tp, fp, m_pre, m_rec, map50, mean_ap
 
 
-def compute_iou(box1, box2, eps=1e-7):
-    # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
+def compute_ciou(box1, box2, eps=1e-7):
+    # Returns CIoU of box1(1,4) to box2(n,4) for training/assignment.
 
     # Get the coordinates of bounding boxes
     b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
@@ -516,7 +518,7 @@ class Assigner(torch.nn.Module):
 
         pd_boxes = pd_bboxes.unsqueeze(1).expand(-1, num_max_boxes, -1, -1)[gt_mask]
         gt_boxes = gt_bboxes.unsqueeze(2).expand(-1, -1, na, -1)[gt_mask]
-        overlaps[gt_mask] = compute_iou(gt_boxes, pd_boxes).squeeze(-1).clamp_(0)
+        overlaps[gt_mask] = compute_ciou(gt_boxes, pd_boxes).squeeze(-1).clamp_(0)
 
         align_metric = bbox_scores.pow(self.alpha) * overlaps.pow(self.beta)
 
@@ -642,7 +644,7 @@ class BoxLoss(torch.nn.Module):
     def forward(self, pred_dist, pred_bboxes, anchor_points, target_bboxes, target_scores, target_scores_sum, fg_mask):
         # IoU loss
         weight = torch.masked_select(target_scores.sum(-1), fg_mask).unsqueeze(-1)
-        iou = compute_iou(pred_bboxes[fg_mask], target_bboxes[fg_mask])
+        iou = compute_ciou(pred_bboxes[fg_mask], target_bboxes[fg_mask])
         loss_box = ((1.0 - iou) * weight).sum() / target_scores_sum
 
         # DFL loss
