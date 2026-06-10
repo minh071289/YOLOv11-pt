@@ -59,7 +59,11 @@ class ResNet50LegacyYOLO(torch.nn.Module):
         for parameter in self.backbone.layer4.parameters():
             parameter.requires_grad = True
 
-    def set_backbone_train_mode(self, finetune_layer4=False):
+    def unfreeze_layer3(self):
+        for parameter in self.backbone.layer3.parameters():
+            parameter.requires_grad = True
+
+    def set_backbone_train_mode(self):
+        # Trainable backbone convolutions still receive gradients in eval mode,
+        # while pretrained BatchNorm statistics stay fixed for small batches.
         self.backbone.eval()
-        if finetune_layer4:
-            self.backbone.layer4.train()
