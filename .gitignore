@@ -3,7 +3,8 @@ __pycache__/
 .venv/
 weights/
 README.md
-LICENSE
 public/
 kaggle_train.ipynb
 local_train.ipynb
+experiment.md
+kaggle-train.ipynb

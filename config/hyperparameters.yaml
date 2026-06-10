@@ -14,8 +14,8 @@ training:
   val_interval: 5
 
 inference:
-  confidence: 0.25
-  iou: 0.50
+  confidence: 0.01 # 0.25
+  iou: 0.60 # 0.50
 
 loss:
   box: 7.5
