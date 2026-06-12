@@ -42,10 +42,6 @@ DEFAULT_CONFIG = {
         'box': 7.5,
         'cls': 0.5,
         'dfl': 1.5,
-        'classification': 'bce',
-        'vfl_alpha': 0.75,
-        'vfl_gamma': 2.0,
-        'vfl_iou_weighted': True,
     },
     'augmentation': {
         'flip_lr': 0.5,

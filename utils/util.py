@@ -587,32 +587,6 @@ class QFL(torch.nn.Module):
         return torch.pow(torch.abs(targets - outputs.sigmoid()), self.beta) * bce_loss
 
 
-class VFL(torch.nn.Module):
-    def __init__(self, alpha=0.75, gamma=2.00, iou_weighted=True):
-        super().__init__()
-        assert alpha >= 0.0
-        self.alpha = alpha
-        self.gamma = gamma
-        self.iou_weighted = iou_weighted
-        self.bce_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
-
-    def forward(self, outputs, targets):
-        assert outputs.size() == targets.size()
-        targets = targets.type_as(outputs)
-
-        if self.iou_weighted:
-            focal_weight = targets * (targets > 0.0).float() + \
-                           self.alpha * (outputs.sigmoid() - targets).abs().pow(self.gamma) * \
-                           (targets <= 0.0).float()
-
-        else:
-            focal_weight = (targets > 0.0).float() + \
-                           self.alpha * (outputs.sigmoid() - targets).abs().pow(self.gamma) * \
-                           (targets <= 0.0).float()
-
-        return self.bce_loss(outputs, targets) * focal_weight
-
-
 class FocalLoss(torch.nn.Module):
     def __init__(self, alpha=0.25, gamma=1.5):
         super().__init__()
@@ -686,21 +660,7 @@ class ComputeLoss:
         self.device = device
 
         self.box_loss = BoxLoss(m.ch - 1).to(device)
-        classification_loss = str(params.get('classification', 'bce')).lower()
-        if classification_loss == 'bce':
-            self.cls_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
-        elif classification_loss in ('vfl', 'varifocal'):
-            self.cls_loss = VFL(
-                alpha=float(params.get('vfl_alpha', 0.75)),
-                gamma=float(params.get('vfl_gamma', 2.0)),
-                iou_weighted=bool(params.get('vfl_iou_weighted', True)),
-            )
-        else:
-            raise ValueError(
-                f'Unsupported classification loss: {classification_loss}. '
-                'Expected bce or varifocal.'
-            )
-        self.classification_loss = classification_loss
+        self.cls_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
         self.assigner = Assigner(nc=self.nc, top_k=10, alpha=0.5, beta=6.0)
 
         self.project = torch.arange(m.ch, dtype=torch.float, device=device)
