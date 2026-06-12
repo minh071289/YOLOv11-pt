@@ -8,6 +8,8 @@ DEFAULT_CONFIG = {
         'backbone': 'resnet50',
         'pretrained_backbone': True,
         'input_size': 640,
+        'neck_channels': [64, 128, 256],
+        'fpn_depth': 1,
     },
     'training': {
         'epochs': 50,

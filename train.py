@@ -377,6 +377,8 @@ def main():
     model = ResNet50LegacyYOLO(
         num_classes=len(classes),
         pretrained_backbone=(not args.no_pretrained and config['model'].get('pretrained_backbone', True)),
+        neck_channels=config['model'].get('neck_channels', [64, 128, 256]),
+        fpn_depth=config['model'].get('fpn_depth', 1),
     ).to(device)
     model.freeze_backbone()
 

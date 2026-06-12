@@ -5,21 +5,37 @@ from .backbones import ResNet50Backbone
 
 
 class ResNet50LegacyYOLO(torch.nn.Module):
-    def __init__(self, num_classes=5, pretrained_backbone=True):
+    def __init__(
+        self,
+        num_classes=5,
+        pretrained_backbone=True,
+        neck_channels=(64, 128, 256),
+        fpn_depth=1,
+    ):
         super().__init__()
+        if len(neck_channels) != 3:
+            raise ValueError('neck_channels must contain P3, P4, and P5 channels')
+        neck_channels = tuple(int(channel) for channel in neck_channels)
+        if any(channel <= 0 for channel in neck_channels):
+            raise ValueError('neck_channels must be positive')
+        if int(fpn_depth) < 1:
+            raise ValueError('fpn_depth must be at least 1')
+
         self.backbone = ResNet50Backbone(pretrained=pretrained_backbone)
         self.adapters = torch.nn.ModuleList([
-            torch.nn.Conv2d(512, 128, kernel_size=1, bias=True),
-            torch.nn.Conv2d(1024, 128, kernel_size=1, bias=True),
-            torch.nn.Conv2d(2048, 256, kernel_size=1, bias=True),
+            torch.nn.Conv2d(512, neck_channels[1], kernel_size=1, bias=True),
+            torch.nn.Conv2d(1024, neck_channels[1], kernel_size=1, bias=True),
+            torch.nn.Conv2d(2048, neck_channels[2], kernel_size=1, bias=True),
         ])
 
-        width = [3, 16, 32, 64, 128, 256]
-        depth = [1, 1, 1, 1, 1, 1]
+        width = [3, 16, 32, *neck_channels]
+        depth = [1, 1, 1, 1, 1, int(fpn_depth)]
         csp = [False, True]
 
+        self.neck_channels = neck_channels
+        self.fpn_depth = int(fpn_depth)
         self.fpn = legacy_nn.DarkFPN(width, depth, csp)
-        self.head = legacy_nn.Head(num_classes, (width[3], width[4], width[5]))
+        self.head = legacy_nn.Head(num_classes, neck_channels)
         self.register_buffer('image_mean', torch.tensor((0.485, 0.456, 0.406)).view(1, 3, 1, 1))
         self.register_buffer('image_std', torch.tensor((0.229, 0.224, 0.225)).view(1, 3, 1, 1))
 

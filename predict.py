@@ -27,7 +27,13 @@ def parse_args():
 def load_model(checkpoint_path, device):
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     classes = checkpoint.get('classes', ['person', 'car', 'dog', 'cat', 'chair'])
-    model = ResNet50LegacyYOLO(num_classes=len(classes), pretrained_backbone=False)
+    model_config = checkpoint.get('config', {}).get('model', {})
+    model = ResNet50LegacyYOLO(
+        num_classes=len(classes),
+        pretrained_backbone=False,
+        neck_channels=model_config.get('neck_channels', [64, 128, 256]),
+        fpn_depth=model_config.get('fpn_depth', 1),
+    )
     model.load_state_dict(checkpoint['model'])
     model.to(device).eval()
     return model, classes, checkpoint.get('input_size', 640)
