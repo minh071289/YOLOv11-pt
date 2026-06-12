@@ -1,5 +1,6 @@
 import json
 import random
+from collections import defaultdict
 from pathlib import Path
 
 import cv2
@@ -212,3 +213,123 @@ class JsonDetectionDataset(data.Dataset):
             'idx': torch.cat(batch_indices, dim=0),
         }
         return torch.stack(samples, dim=0), targets
+
+
+class ClassAwareSampler(data.Sampler):
+    """Sample a fixed empty/positive split and prioritize selected classes."""
+
+    def __init__(
+        self,
+        dataset,
+        empty_fraction=0.20,
+        class_weights=None,
+        num_samples=None,
+        seed=0,
+    ):
+        if not 0.0 <= empty_fraction < 1.0:
+            raise ValueError('empty_fraction must be in [0, 1)')
+
+        self.dataset = dataset
+        self.empty_fraction = float(empty_fraction)
+        self.class_weights = dict(class_weights or {})
+        self.num_samples = int(num_samples or len(dataset))
+        self.seed = int(seed)
+        self.epoch = 0
+        self.last_indices = []
+
+        self.image_classes = []
+        self.empty_indices = []
+        self.positive_indices = []
+        positive_weights = []
+
+        for index, image in enumerate(dataset.images):
+            annotations = dataset.boxes_by_image.get(image['id'], [])
+            class_names = {
+                dataset.classes[int(annotation['class_id'])]
+                for annotation in annotations
+            }
+            self.image_classes.append(class_names)
+
+            if not class_names:
+                self.empty_indices.append(index)
+                continue
+
+            self.positive_indices.append(index)
+            positive_weights.append(max(
+                (
+                    float(self.class_weights.get(class_name, 1.0))
+                    for class_name in class_names
+                ),
+                default=1.0,
+            ))
+
+        if self.empty_fraction > 0.0 and not self.empty_indices:
+            raise ValueError('Cannot sample empty images: dataset has no empty images')
+        if not self.positive_indices:
+            raise ValueError('Cannot use class-aware sampling: dataset has no positive images')
+        if any(weight <= 0.0 for weight in positive_weights):
+            raise ValueError('All class sampling weights must be positive')
+
+        self.positive_weights = torch.as_tensor(positive_weights, dtype=torch.double)
+
+    def __len__(self):
+        return self.num_samples
+
+    def set_epoch(self, epoch):
+        self.epoch = int(epoch)
+
+    def __iter__(self):
+        generator = torch.Generator()
+        generator.manual_seed(self.seed + self.epoch)
+
+        empty_count = round(self.num_samples * self.empty_fraction)
+        positive_count = self.num_samples - empty_count
+        sampled = []
+
+        if empty_count:
+            empty_choices = torch.randint(
+                len(self.empty_indices),
+                (empty_count,),
+                generator=generator,
+            )
+            sampled.extend(
+                self.empty_indices[index]
+                for index in empty_choices.tolist()
+            )
+
+        positive_choices = torch.multinomial(
+            self.positive_weights,
+            positive_count,
+            replacement=True,
+            generator=generator,
+        )
+        sampled.extend(
+            self.positive_indices[index]
+            for index in positive_choices.tolist()
+        )
+
+        permutation = torch.randperm(len(sampled), generator=generator).tolist()
+        self.last_indices = [sampled[index] for index in permutation]
+        return iter(self.last_indices)
+
+    def summary(self):
+        if not self.last_indices:
+            return {}
+
+        empty_count = 0
+        class_counts = defaultdict(int)
+        for index in self.last_indices:
+            class_names = self.image_classes[index]
+            if not class_names:
+                empty_count += 1
+            for class_name in class_names:
+                class_counts[class_name] += 1
+
+        return {
+            'strategy': 'class_aware',
+            'sampled_images': len(self.last_indices),
+            'sampled_unique_images': len(set(self.last_indices)),
+            'sampled_empty': empty_count,
+            'sampled_empty_fraction': empty_count / len(self.last_indices),
+            'sampled_class_images': dict(class_counts),
+        }
