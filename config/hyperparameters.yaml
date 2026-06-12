@@ -32,8 +32,8 @@ training:
     tau: 2000
 
 inference:
-  confidence: 0.01
-  iou: 0.60
+  confidence: 0.001
+  iou: 0.55
 
 loss:
   box: 7.5

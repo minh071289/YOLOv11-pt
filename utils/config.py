@@ -33,13 +33,6 @@ DEFAULT_CONFIG = {
             'decay': 0.9999,
             'tau': 2000,
         },
-        'sampling': {
-            'strategy': 'uniform',
-            'num_samples': 0,
-            'empty_fraction': 0.20,
-            'class_weights': {},
-            'seed': 0,
-        },
     },
     'inference': {
         'confidence': 0.25,

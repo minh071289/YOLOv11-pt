@@ -14,7 +14,7 @@ from models import ResNet50LegacyYOLO
 from predict import run_predictions
 from utils import util
 from utils.config import flatten_training_params, load_config
-from utils.json_dataset import ClassAwareSampler, JsonDetectionDataset, load_annotations
+from utils.json_dataset import JsonDetectionDataset, load_annotations
 
 
 def parse_args():
@@ -276,36 +276,10 @@ def append_log(log_path, row):
             'map50', 'precision', 'recall', 'it_per_second', 'epoch_seconds',
             'backbone_stage', 'layer3_finetuned', 'layer4_finetuned',
             'lr_head', 'lr_layer4', 'lr_layer3', 'ema_updates',
-            'sampling_strategy', 'sampled_images', 'sampled_unique_images',
-            'sampled_empty', 'sampled_empty_fraction',
-            'sampled_chair_images', 'sampled_car_images',
         ])
         if not exists:
             writer.writeheader()
         writer.writerow(row)
-
-
-def build_train_sampler(dataset, sampling_config):
-    strategy = (sampling_config or {}).get('strategy', 'uniform')
-    if strategy == 'uniform':
-        return None
-    if strategy != 'class_aware':
-        raise ValueError(f'Unsupported sampling strategy: {strategy}')
-
-    sampler = ClassAwareSampler(
-        dataset=dataset,
-        empty_fraction=sampling_config.get('empty_fraction', 0.20),
-        class_weights=sampling_config.get('class_weights', {}),
-        num_samples=sampling_config.get('num_samples') or len(dataset),
-        seed=sampling_config.get('seed', 0),
-    )
-    print(
-        'Class-aware sampling enabled: '
-        f'{sampler.num_samples} samples/epoch, '
-        f'{sampler.empty_fraction:.0%} empty, '
-        f'class weights={sampler.class_weights}'
-    )
-    return sampler
 
 
 def train_one_epoch(model, loader, criterion, optimizer, scheduler, ema, scaler, args, device):
@@ -391,15 +365,10 @@ def main():
         augment=True,
         params=params,
     )
-    train_sampler = build_train_sampler(
-        train_dataset,
-        config['training'].get('sampling'),
-    )
     train_loader = data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=train_sampler is None,
-        sampler=train_sampler,
+        shuffle=True,
         num_workers=args.num_workers,
         pin_memory=device.type == 'cuda',
         collate_fn=JsonDetectionDataset.collate_fn,
@@ -427,8 +396,6 @@ def main():
 
     for epoch in range(args.epochs):
         args.current_epoch = epoch
-        if train_sampler is not None:
-            train_sampler.set_epoch(epoch)
         metrics = train_one_epoch(
             model,
             train_loader,
@@ -440,8 +407,6 @@ def main():
             args,
             device,
         )
-        sampling_stats = train_sampler.summary() if train_sampler is not None else {}
-        sampled_class_images = sampling_stats.get('sampled_class_images', {})
 
         epoch_number = epoch + 1
         should_validate = should_validate_epoch(epoch_number, args)
@@ -511,23 +476,7 @@ def main():
             'lr_layer4': learning_rates['layer4'],
             'lr_layer3': learning_rates['layer3'],
             'ema_updates': 0 if ema is None else ema.updates,
-            'sampling_strategy': sampling_stats.get('strategy', 'uniform'),
-            'sampled_images': sampling_stats.get('sampled_images', ''),
-            'sampled_unique_images': sampling_stats.get('sampled_unique_images', ''),
-            'sampled_empty': sampling_stats.get('sampled_empty', ''),
-            'sampled_empty_fraction': sampling_stats.get('sampled_empty_fraction', ''),
-            'sampled_chair_images': sampled_class_images.get('chair', ''),
-            'sampled_car_images': sampled_class_images.get('car', ''),
         })
-
-        if sampling_stats:
-            print(
-                'Sampling: '
-                f"empty={sampling_stats['sampled_empty_fraction']:.1%}, "
-                f"chair={sampled_class_images.get('chair', 0)}, "
-                f"car={sampled_class_images.get('car', 0)}, "
-                f"unique={sampling_stats['sampled_unique_images']}"
-            )
 
         print(
             f"epoch {epoch_number}/{args.epochs} "
