@@ -13,7 +13,7 @@ from utils.json_dataset import letterbox, list_image_files, scale_boxes_to_origi
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run object detection inference.')
-    parser.add_argument('--config', default='config/hyperparameters.yaml')
+    parser.add_argument('--config', default='config/official.yaml')
     parser.add_argument('--image_dir', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--checkpoint', default='./models/best.pth')

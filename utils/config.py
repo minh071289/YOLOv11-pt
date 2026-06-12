@@ -63,7 +63,7 @@ def deep_update(base, update):
     return base
 
 
-def load_config(config_path='config/hyperparameters.yaml'):
+def load_config(config_path='config/official.yaml'):
     config = deep_update({}, DEFAULT_CONFIG)
     path = Path(config_path)
     if path.exists():

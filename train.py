@@ -19,7 +19,7 @@ from utils.json_dataset import JsonDetectionDataset, load_annotations
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train ResNet50 legacy YOLO detector.')
-    parser.add_argument('--config', default='config/hyperparameters.yaml')
+    parser.add_argument('--config', default='config/official.yaml')
     parser.add_argument('--train_data', required=True)
     parser.add_argument('--val_data', required=True)
     parser.add_argument('--image_dir', required=True)
