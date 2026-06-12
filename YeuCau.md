@@ -108,6 +108,6 @@ mAP@0.5
 0.60 - < 0.75 15
 >= 0.75 20 
 
-Điểm mong muốn: mAP@0.5 >= 0.80
+Điểm mong muốn: mAP@0.5 >= 0.85
 
 Sau đó được chuẩn hóa: người có kết quả cao nhất được 20 điểm, người có kết quả thấp nhất được 0 điểm.

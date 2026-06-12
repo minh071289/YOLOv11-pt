@@ -121,10 +121,16 @@ def compute_metric(output, target, iou_v):
     return torch.tensor(correct, dtype=torch.bool, device=output.device)
 
 
-def non_max_suppression(outputs, confidence_threshold=0.001, iou_threshold=0.65):
+def non_max_suppression(
+    outputs,
+    confidence_threshold=0.001,
+    iou_threshold=0.65,
+    max_detections=300,
+):
     max_wh = 7680
-    max_det = 300
     max_nms = 30000
+    if max_detections < 1:
+        raise ValueError('max_detections must be at least 1')
 
     bs = outputs.shape[0]  # batch size
     nc = outputs.shape[1] - 4  # number of classes
@@ -161,7 +167,7 @@ def non_max_suppression(outputs, confidence_threshold=0.001, iou_threshold=0.65)
         c = x[:, 5:6] * max_wh  # classes
         boxes, scores = x[:, :4] + c, x[:, 4]  # boxes, scores
         indices = torchvision.ops.nms(boxes, scores, iou_threshold)  # NMS
-        indices = indices[:max_det]  # limit detections
+        indices = indices[:max_detections]  # limit detections
 
         output[index] = x[indices]
         if (time() - start) > limit:

@@ -140,6 +140,7 @@ def collect_nms_results(model, image_paths, input_size, classes, args, device):
                         sample_output,
                         confidence_threshold=minimum_confidence,
                         iou_threshold=nms_iou,
+                        max_detections=args.max_detections,
                     )[0]
                     records[nms_iou].append(
                         compact_detections(detections, sample_metadata, classes)
