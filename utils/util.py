@@ -686,7 +686,21 @@ class ComputeLoss:
         self.device = device
 
         self.box_loss = BoxLoss(m.ch - 1).to(device)
-        self.cls_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
+        classification_loss = str(params.get('classification', 'bce')).lower()
+        if classification_loss == 'bce':
+            self.cls_loss = torch.nn.BCEWithLogitsLoss(reduction='none')
+        elif classification_loss in ('vfl', 'varifocal'):
+            self.cls_loss = VFL(
+                alpha=float(params.get('vfl_alpha', 0.75)),
+                gamma=float(params.get('vfl_gamma', 2.0)),
+                iou_weighted=bool(params.get('vfl_iou_weighted', True)),
+            )
+        else:
+            raise ValueError(
+                f'Unsupported classification loss: {classification_loss}. '
+                'Expected bce or varifocal.'
+            )
+        self.classification_loss = classification_loss
         self.assigner = Assigner(nc=self.nc, top_k=10, alpha=0.5, beta=6.0)
 
         self.project = torch.arange(m.ch, dtype=torch.float, device=device)

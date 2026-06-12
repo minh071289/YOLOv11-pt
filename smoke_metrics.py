@@ -70,9 +70,28 @@ def check_non_max_suppression():
     assert abs(detections[:, 4].max().item() - 0.95) < 1e-6
 
 
+def check_varifocal_loss():
+    outputs = torch.tensor(
+        [[-2.0, 0.5, 2.0]],
+        dtype=torch.float32,
+        requires_grad=True,
+    )
+    targets = torch.tensor([[0.0, 0.4, 0.9]], dtype=torch.float32)
+    loss = util.VFL(alpha=0.75, gamma=2.0, iou_weighted=True)(outputs, targets)
+
+    assert loss.shape == outputs.shape
+    assert torch.isfinite(loss).all().item()
+    assert (loss >= 0).all().item()
+
+    loss.sum().backward()
+    assert outputs.grad is not None
+    assert torch.isfinite(outputs.grad).all().item()
+
+
 if __name__ == '__main__':
     check_compute_ap()
     check_compute_metric()
     check_compute_ciou()
     check_non_max_suppression()
+    check_varifocal_loss()
     print('metric smoke checks passed')
