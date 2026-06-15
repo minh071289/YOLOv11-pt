@@ -1,6 +1,6 @@
 import torch
 
-from nets import legacy_nn
+from . import legacy_nn
 from .backbones import ResNet50Backbone
 
 

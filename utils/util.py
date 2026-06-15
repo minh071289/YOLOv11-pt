@@ -28,18 +28,14 @@ def setup_multi_processes():
     from os import environ
     from platform import system
 
-    # set multiprocess start method as `fork` to speed up the training
     if system() != 'Windows':
         torch.multiprocessing.set_start_method('fork', force=True)
 
-    # disable opencv multithreading to avoid system being overloaded
     cv2.setNumThreads(0)
 
-    # setup OMP threads
     if 'OMP_NUM_THREADS' not in environ:
         environ['OMP_NUM_THREADS'] = '1'
 
-    # setup MKL threads
     if 'MKL_NUM_THREADS' not in environ:
         environ['MKL_NUM_THREADS'] = '1'
 
@@ -58,19 +54,15 @@ def export_onnx(args):
                       f='./weights/best.onnx',
                       verbose=False,
                       opset_version=12,
-                      # WARNING: DNN inference with torch>=1.12 may require do_constant_folding=False
                       do_constant_folding=True,
                       input_names=inputs,
                       output_names=outputs,
                       dynamic_axes=dynamic or None)
 
-    # Checks
     model_onnx = onnx.load('./weights/best.onnx')  # load onnx model
     onnx.checker.check_model(model_onnx)  # check onnx model
 
     onnx.save(model_onnx, './weights/best.onnx')
-    # Inference example
-    # https://github.com/ultralytics/ultralytics/blob/main/ultralytics/nn/autobackend.py
 
 
 def wh2xy(x):
@@ -97,18 +89,14 @@ def make_anchors(x, strides, offset=0.5):
 
 
 def compute_metric(output, target, iou_v):
-    # Internal AP matching uses plain IoU between predicted and target boxes.
-    # intersection(N,M) = (rb(N,M,2) - lt(N,M,2)).clamp(0).prod(2)
     (a1, a2) = target[:, 1:].unsqueeze(1).chunk(2, 2)
     (b1, b2) = output[:, :4].unsqueeze(0).chunk(2, 2)
     intersection = (torch.min(a2, b2) - torch.max(a1, b1)).clamp(0).prod(2)
-    # IoU = intersection / (area1 + area2 - intersection)
     iou = intersection / ((a2 - a1).prod(2) + (b2 - b1).prod(2) - intersection + 1e-7)
 
     correct = numpy.zeros((output.shape[0], iou_v.shape[0]))
     correct = correct.astype(bool)
     for i in range(len(iou_v)):
-        # IoU > threshold and classes match
         x = torch.where((iou >= iou_v[i]) & (target[:, 0:1] == output[:, 5]))
         if x[0].shape[0]:
             matches = torch.cat((torch.stack(x, 1),
@@ -136,18 +124,15 @@ def non_max_suppression(
     nc = outputs.shape[1] - 4  # number of classes
     xc = outputs[:, 4:4 + nc].amax(1) > confidence_threshold  # candidates
 
-    # Settings
     start = time()
     limit = 0.5 + 0.05 * bs  # seconds to quit after
     output = [torch.zeros((0, 6), device=outputs.device)] * bs
     for index, x in enumerate(outputs):  # image index, image inference
         x = x.transpose(0, -1)[xc[index]]  # confidence
 
-        # If none remain process next image
         if not x.shape[0]:
             continue
 
-        # matrix nx6 (box, confidence, cls)
         box, cls = x.split((4, nc), 1)
         box = wh2xy(box)  # (cx, cy, w, h) to (x1, y1, x2, y2)
         if nc > 1:
@@ -175,14 +160,11 @@ def non_max_suppression(
 
     return output
 
-
 def smooth(y, f=0.1):
-    # Box filter of fraction f
     nf = round(len(y) * f * 2) // 2 + 1  # number of filter elements (must be odd)
     p = numpy.ones(nf // 2)  # ones padding
     yp = numpy.concatenate((p * y[0], y, p * y[-1]), 0)  # y padded
     return numpy.convolve(yp, numpy.ones(nf) / nf, mode='valid')  # y-smoothed
-
 
 def plot_pr_curve(px, py, ap, names, save_dir):
     from matplotlib import pyplot
@@ -204,7 +186,6 @@ def plot_pr_curve(px, py, ap, names, save_dir):
     ax.set_title("Precision-Recall Curve")
     fig.savefig(save_dir, dpi=250)
     pyplot.close(fig)
-
 
 def plot_curve(px, py, names, save_dir, x_label="Confidence", y_label="Metric"):
     from matplotlib import pyplot
@@ -232,7 +213,6 @@ def plot_curve(px, py, names, save_dir, x_label="Confidence", y_label="Metric"):
 def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
     """
     Compute the average precision, given the recall and precision curves.
-    Source: https://github.com/rafaelpadilla/Object-Detection-Metrics.
     This is an internal AP approximation used by this repo, not COCOeval.
     # Arguments
         tp:  True positives (nparray, nx1 or nx10).
@@ -242,15 +222,12 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
     # Returns
         The average precision
     """
-    # Sort by object-ness
     i = numpy.argsort(-conf)
     tp, conf, output = tp[i], conf[i], output[i]
 
-    # Find unique classes
     unique_classes, nt = numpy.unique(target, return_counts=True)
     nc = unique_classes.shape[0]  # number of classes, number of detections
 
-    # Create Precision-Recall curve and compute AP for each class
     p = numpy.zeros((nc, 1000))
     r = numpy.zeros((nc, 1000))
     ap = numpy.zeros((nc, tp.shape[1]))
@@ -262,28 +239,22 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
         if no == 0 or nl == 0:
             continue
 
-        # Accumulate FPs and TPs
         fpc = (1 - tp[i]).cumsum(0)
         tpc = tp[i].cumsum(0)
 
-        # Recall
         recall = tpc / (nl + eps)  # recall curve
-        # negative x, xp because xp decreases
+
         r[ci] = numpy.interp(-px, -conf[i], recall[:, 0], left=0)
 
-        # Precision
         precision = tpc / (tpc + fpc)  # precision curve
         p[ci] = numpy.interp(-px, -conf[i], precision[:, 0], left=1)  # p at pr_score
 
-        # AP from recall-precision curve
         for j in range(tp.shape[1]):
             m_rec = numpy.concatenate(([0.0], recall[:, j], [1.0]))
             m_pre = numpy.concatenate(([1.0], precision[:, j], [0.0]))
 
-            # Compute the precision envelope
             m_pre = numpy.flip(numpy.maximum.accumulate(numpy.flip(m_pre)))
 
-            # Integrate area under curve
             x = numpy.linspace(start=0, stop=1, num=101)  # 101-point interp (COCO)
             ap[ci, j] = numpy.trapezoid(numpy.interp(x, m_rec, m_pre), x)  # integrate
             if plot and j == 0:
@@ -311,13 +282,11 @@ def compute_ap(tp, conf, output, target, plot=False, names=(), eps=1E-16):
 def compute_ciou(box1, box2, eps=1e-7):
     # Returns CIoU of box1(1,4) to box2(n,4) for training/assignment.
 
-    # Get the coordinates of bounding boxes
     b1_x1, b1_y1, b1_x2, b1_y2 = box1.chunk(4, -1)
     b2_x1, b2_y1, b2_x2, b2_y2 = box2.chunk(4, -1)
     w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
     w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
 
-    # Intersection area
     inter = (b1_x2.minimum(b2_x2) - b1_x1.maximum(b2_x1)).clamp(0) * \
             (b1_y2.minimum(b2_y2) - b1_y1.maximum(b2_y1)).clamp(0)
 
@@ -445,9 +414,7 @@ class LinearLR:
 
 class EMA:
     """
-    Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
     Keeps a moving average of everything in the model state_dict (parameters and buffers)
-    For EMA details see https://www.tensorflow.org/api_docs/python/tf/train/ExponentialMovingAverage
     """
 
     def __init__(self, model, decay=0.9999, tau=2000, updates=0):
@@ -639,7 +606,6 @@ class BoxLoss(torch.nn.Module):
     @staticmethod
     def df_loss(pred_dist, target):
         # Distribution Focal Loss (DFL)
-        # https://ieeexplore.ieee.org/document/9792391
         tl = target.long()  # target left
         tr = tl + 1  # target right
         wl = tr - target  # weight left

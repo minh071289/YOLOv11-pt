@@ -13,20 +13,27 @@ from utils.json_dataset import letterbox, list_image_files, scale_boxes_to_origi
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Run object detection inference.')
+    parser = argparse.ArgumentParser(
+        description='Run two-checkpoint ensemble inference by default.'
+    )
     parser.add_argument('--config', default='config/current_best.yaml')
     parser.add_argument('--image_dir', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--checkpoint', default='./models/best.pth')
-    parser.add_argument('--checkpoint2', default=None)
+    parser.add_argument('--checkpoint2', default='./models/best2.pth')
+    parser.add_argument(
+        '--single_model',
+        action='store_true',
+        help='Use only --checkpoint and disable the default ensemble.',
+    )
     parser.add_argument('--input_size', default=None, type=int)
     parser.add_argument('--input_size2', default=None, type=int)
     parser.add_argument('--confidence', default=None, type=float)
-    parser.add_argument('--confidence2', default=None, type=float)
+    parser.add_argument('--confidence2', default=0.001, type=float)
     parser.add_argument('--iou', default=None, type=float)
-    parser.add_argument('--iou2', default=None, type=float)
+    parser.add_argument('--iou2', default=0.55, type=float)
     parser.add_argument('--max_detections', default=300, type=int)
-    parser.add_argument('--max_detections2', default=None, type=int)
+    parser.add_argument('--max_detections2', default=100, type=int)
     parser.add_argument('--match_iou', default=0.355, type=float)
     parser.add_argument('--unmatched_penalty', default=0.220, type=float)
     parser.add_argument('--ensemble_weight', default=0.50, type=float)
@@ -256,11 +263,13 @@ def main():
         raise ValueError('--max_detections must be at least 1')
 
     ensemble = None
-    if args.checkpoint2:
+    if not args.single_model:
+        if not args.checkpoint2:
+            raise ValueError('--checkpoint2 is required unless --single_model is used')
         model2, classes2, checkpoint_input_size2 = load_model(args.checkpoint2, device)
         if classes2 != classes:
             raise ValueError('Both checkpoints must use the same classes')
-        max_detections2 = args.max_detections2 or args.max_detections
+        max_detections2 = args.max_detections2
         if max_detections2 < 1:
             raise ValueError('--max_detections2 must be at least 1')
         if not 0.0 <= args.match_iou <= 1.0:
