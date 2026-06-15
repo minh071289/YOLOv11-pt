@@ -1,6 +1,11 @@
 import numpy
 import torch
 
+from experiment8_horizontal_tta import (
+    merge_tta_outputs,
+    unflip_horizontal_outputs,
+)
+from experiment8_multiscale_tta import outputs_to_original
 from utils import util
 
 
@@ -70,9 +75,48 @@ def check_non_max_suppression():
     assert abs(detections[:, 4].max().item() - 0.95) < 1e-6
 
 
+def check_horizontal_flip_tta():
+    outputs = torch.tensor([[
+        [10.0, 20.0],
+        [5.0, 15.0],
+        [4.0, 8.0],
+        [6.0, 10.0],
+        [0.9, 0.8],
+    ]])
+    restored = unflip_horizontal_outputs(
+        unflip_horizontal_outputs(outputs, 32),
+        32,
+    )
+    assert torch.equal(restored, outputs)
+
+    merged = merge_tta_outputs(outputs, outputs, 32)
+    assert merged.shape == (1, 5, 4)
+
+
+def check_multiscale_tta():
+    outputs = torch.tensor([[
+        [60.0],
+        [45.0],
+        [20.0],
+        [10.0],
+        [0.9],
+    ]])
+    converted = outputs_to_original(outputs, ratio=2.0, pad=(10.0, 5.0))
+    expected = torch.tensor([[
+        [25.0],
+        [20.0],
+        [10.0],
+        [5.0],
+        [0.9],
+    ]])
+    assert torch.allclose(converted, expected)
+
+
 if __name__ == '__main__':
     check_compute_ap()
     check_compute_metric()
     check_compute_ciou()
     check_non_max_suppression()
+    check_horizontal_flip_tta()
+    check_multiscale_tta()
     print('metric smoke checks passed')
