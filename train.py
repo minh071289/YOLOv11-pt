@@ -276,6 +276,7 @@ def append_log(log_path, row):
             'map50', 'precision', 'recall', 'it_per_second', 'epoch_seconds',
             'backbone_stage', 'layer3_finetuned', 'layer4_finetuned',
             'lr_head', 'lr_layer4', 'lr_layer3', 'ema_updates',
+            'mosaic_probability',
         ])
         if not exists:
             writer.writeheader()
@@ -398,6 +399,8 @@ def main():
 
     for epoch in range(args.epochs):
         args.current_epoch = epoch
+        train_dataset.set_epoch(epoch, args.epochs)
+        mosaic_probability = train_dataset.mosaic_probability()
         metrics = train_one_epoch(
             model,
             train_loader,
@@ -478,6 +481,7 @@ def main():
             'lr_layer4': learning_rates['layer4'],
             'lr_layer3': learning_rates['layer3'],
             'ema_updates': 0 if ema is None else ema.updates,
+            'mosaic_probability': mosaic_probability,
         })
 
         print(
@@ -485,6 +489,7 @@ def main():
             f"loss={metrics['loss']:.4f} "
             f"it/s={metrics['it_per_second']:.2f} "
             f"epoch_time={metrics['epoch_seconds']:.1f}s "
+            f"mosaic={mosaic_probability:.2f} "
             f"stage={metrics['stage']} "
             f"lr={learning_rates['head']:.2e}/"
             f"{learning_rates['layer4']:.2e}/"

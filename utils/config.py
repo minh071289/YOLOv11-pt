@@ -52,6 +52,10 @@ DEFAULT_CONFIG = {
         'hsv_v': 0.4,
         'translate': 0.10,
         'scale': 0.20,
+        'mosaic': 0.0,
+        'close_mosaic_epochs': 0,
+        'mosaic_translate': 0.05,
+        'mosaic_scale': 0.10,
     },
 }
 

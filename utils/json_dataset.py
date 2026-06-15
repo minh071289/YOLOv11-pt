@@ -115,6 +115,55 @@ def scale_boxes_to_original(boxes, ratio, pad, width, height):
     return boxes
 
 
+def build_mosaic(samples, input_size):
+    if len(samples) != 4:
+        raise ValueError('Mosaic requires exactly four samples')
+
+    tile_size = input_size // 2
+    if tile_size < 1 or input_size % 2:
+        raise ValueError('Mosaic input size must be a positive even number')
+
+    mosaic = numpy.zeros((input_size, input_size, 3), dtype=numpy.uint8)
+    mosaic_boxes = []
+    mosaic_labels = []
+    offsets = (
+        (0, 0),
+        (tile_size, 0),
+        (0, tile_size),
+        (tile_size, tile_size),
+    )
+
+    for (image, boxes, labels), (offset_x, offset_y) in zip(samples, offsets):
+        tile, ratio, pad = letterbox(image, tile_size)
+        mosaic[
+            offset_y:offset_y + tile_size,
+            offset_x:offset_x + tile_size,
+        ] = tile
+
+        if len(boxes):
+            transformed = boxes.copy()
+            transformed[:, [0, 2]] = (
+                transformed[:, [0, 2]] * ratio + pad[0] + offset_x
+            )
+            transformed[:, [1, 3]] = (
+                transformed[:, [1, 3]] * ratio + pad[1] + offset_y
+            )
+            mosaic_boxes.append(transformed)
+            mosaic_labels.append(labels.copy())
+
+    boxes = (
+        numpy.concatenate(mosaic_boxes, axis=0)
+        if mosaic_boxes
+        else numpy.zeros((0, 4), dtype=numpy.float32)
+    )
+    labels = (
+        numpy.concatenate(mosaic_labels, axis=0)
+        if mosaic_labels
+        else numpy.zeros((0, 1), dtype=numpy.float32)
+    )
+    return mosaic, boxes, labels
+
+
 class JsonDetectionDataset(data.Dataset):
     def __init__(self, annotation_path, image_dir, input_size=640, augment=False, params=None):
         self.annotation, self.classes, self.boxes_by_image = load_annotations(annotation_path)
@@ -123,11 +172,24 @@ class JsonDetectionDataset(data.Dataset):
         self.augment = augment
         self.params = params or {}
         self.images = self.annotation['images']
+        self.current_epoch = 0
+        self.total_epochs = 1
 
     def __len__(self):
         return len(self.images)
 
-    def __getitem__(self, index):
+    def set_epoch(self, epoch, total_epochs):
+        self.current_epoch = int(epoch)
+        self.total_epochs = max(int(total_epochs), 1)
+
+    def mosaic_probability(self):
+        probability = float(self.params.get('mosaic', 0.0))
+        close_epochs = max(int(self.params.get('close_mosaic_epochs', 0)), 0)
+        if close_epochs and self.current_epoch >= self.total_epochs - close_epochs:
+            return 0.0
+        return min(max(probability, 0.0), 1.0)
+
+    def load_raw(self, index):
         image_info = self.images[index]
         image_path = resolve_image_path(self.image_dir, image_info['file_name'])
         image = cv2.imread(str(image_path))
@@ -143,18 +205,45 @@ class JsonDetectionDataset(data.Dataset):
 
         boxes = numpy.array(boxes, dtype=numpy.float32).reshape(-1, 4)
         labels = numpy.array(labels, dtype=numpy.float32).reshape(-1, 1)
+        return image, boxes, labels
 
-        image, ratio, pad = letterbox(image, self.input_size)
-        if len(boxes):
-            boxes[:, [0, 2]] = boxes[:, [0, 2]] * ratio + pad[0]
-            boxes[:, [1, 3]] = boxes[:, [1, 3]] * ratio + pad[1]
+    def __getitem__(self, index):
+        use_mosaic = (
+            self.augment
+            and self.mosaic_probability() > 0.0
+            and random.random() < self.mosaic_probability()
+        )
+        if use_mosaic:
+            indices = [index] + [
+                random.randrange(len(self.images))
+                for _ in range(3)
+            ]
+            image, boxes, labels = build_mosaic(
+                [self.load_raw(sample_index) for sample_index in indices],
+                self.input_size,
+            )
+        else:
+            image, boxes, labels = self.load_raw(index)
+            image, ratio, pad = letterbox(image, self.input_size)
+            if len(boxes):
+                boxes[:, [0, 2]] = boxes[:, [0, 2]] * ratio + pad[0]
+                boxes[:, [1, 3]] = boxes[:, [1, 3]] * ratio + pad[1]
 
         if self.augment:
             image, boxes = random_affine(
                 image,
                 boxes,
-                translate=self.params.get('translate', 0.10),
-                scale=min(self.params.get('scale', 0.50), 0.20),
+                translate=(
+                    self.params.get('mosaic_translate', 0.05)
+                    if use_mosaic
+                    else self.params.get('translate', 0.10)
+                ),
+                scale=min(
+                    self.params.get('mosaic_scale', 0.10)
+                    if use_mosaic
+                    else self.params.get('scale', 0.20),
+                    0.20,
+                ),
             )
 
             if random.random() < self.params.get('flip_lr', 0.5):

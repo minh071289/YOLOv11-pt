@@ -7,6 +7,7 @@ from experiment8_horizontal_tta import (
 )
 from experiment8_multiscale_tta import outputs_to_original
 from utils import util
+from utils.json_dataset import JsonDetectionDataset, build_mosaic
 
 
 def check_compute_metric():
@@ -112,6 +113,31 @@ def check_multiscale_tta():
     assert torch.allclose(converted, expected)
 
 
+def check_controlled_mosaic():
+    samples = []
+    for class_id in range(4):
+        image = numpy.full((20, 40, 3), class_id * 50, dtype=numpy.uint8)
+        boxes = numpy.array([[0.0, 0.0, 40.0, 20.0]], dtype=numpy.float32)
+        labels = numpy.array([[class_id]], dtype=numpy.float32)
+        samples.append((image, boxes, labels))
+
+    image, boxes, labels = build_mosaic(samples, input_size=64)
+    assert image.shape == (64, 64, 3)
+    assert boxes.shape == (4, 4)
+    assert labels[:, 0].tolist() == [0.0, 1.0, 2.0, 3.0]
+    assert (boxes >= 0).all()
+    assert (boxes <= 64).all()
+    assert (boxes[:, 2] > boxes[:, 0]).all()
+    assert (boxes[:, 3] > boxes[:, 1]).all()
+
+    dataset = JsonDetectionDataset.__new__(JsonDetectionDataset)
+    dataset.params = {'mosaic': 0.25, 'close_mosaic_epochs': 10}
+    dataset.set_epoch(39, 50)
+    assert dataset.mosaic_probability() == 0.25
+    dataset.set_epoch(40, 50)
+    assert dataset.mosaic_probability() == 0.0
+
+
 if __name__ == '__main__':
     check_compute_ap()
     check_compute_metric()
@@ -119,4 +145,5 @@ if __name__ == '__main__':
     check_non_max_suppression()
     check_horizontal_flip_tta()
     check_multiscale_tta()
+    check_controlled_mosaic()
     print('metric smoke checks passed')
