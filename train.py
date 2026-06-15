@@ -19,7 +19,7 @@ from utils.json_dataset import JsonDetectionDataset, load_annotations
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train ResNet50 legacy YOLO detector.')
-    parser.add_argument('--config', default='config/current_best.yaml')
+    parser.add_argument('--config', default='utils/hyperparameters.yaml')
     parser.add_argument('--train_data', required=True)
     parser.add_argument('--val_data', required=True)
     parser.add_argument('--image_dir', required=True)
@@ -37,6 +37,7 @@ def parse_args():
     parser.add_argument('--val_interval', default=None, type=int)
     parser.add_argument('--confidence', default=None, type=float)
     parser.add_argument('--iou', default=None, type=float)
+    parser.add_argument('--max_detections', default=None, type=int)
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--no_pretrained', action='store_true')
     return parser.parse_args()
@@ -55,6 +56,11 @@ def apply_config(args, config):
     args.val_interval = args.val_interval if args.val_interval is not None else config['training']['val_interval']
     args.confidence = args.confidence if args.confidence is not None else config['inference']['confidence']
     args.iou = args.iou if args.iou is not None else config['inference']['iou']
+    args.max_detections = (
+        args.max_detections
+        if args.max_detections is not None
+        else config['inference'].get('max_detections', 300)
+    )
 
     training = config['training']
     args.scheduler = training.get('scheduler', 'constant').lower()
@@ -234,6 +240,7 @@ def evaluate_validation(model, args, classes, checkpoint_dir, epoch):
         input_size=args.input_size,
         confidence=args.confidence,
         iou=args.iou,
+        max_detections=args.max_detections,
         device=torch.device(args.device),
     )
     prediction_path.write_text(json.dumps(predictions, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

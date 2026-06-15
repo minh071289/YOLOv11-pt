@@ -39,6 +39,7 @@ DEFAULT_CONFIG = {
     'inference': {
         'confidence': 0.25,
         'iou': 0.50,
+        'max_detections': 300,
     },
     'loss': {
         'box': 7.5,
@@ -69,7 +70,7 @@ def deep_update(base, update):
     return base
 
 
-def load_config(config_path='config/current_best.yaml'):
+def load_config(config_path='utils/hyperparameters.yaml'):
     config = deep_update({}, DEFAULT_CONFIG)
     path = Path(config_path)
     if path.exists():

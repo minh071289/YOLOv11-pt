@@ -27,8 +27,8 @@ training:
   layer4_unfreeze_epoch: 4
   layer3_unfreeze_epoch: 11
 
-  val_interval: 3
-  val_every_epoch_from: 0
+  val_interval: 5
+  val_every_epoch_from: 10
   early_stopping_patience: 15
 
   ema:
@@ -39,6 +39,7 @@ training:
 inference:
   confidence: 0.0001
   iou: 0.50
+  max_detections: 300
 
 loss:
   box: 7.5
@@ -52,8 +53,3 @@ augmentation:
   hsv_v: 0.4
   translate: 0.10
   scale: 0.20
-
-  mosaic: 0.25
-  close_mosaic_epochs: 10
-  mosaic_translate: 0.05
-  mosaic_scale: 0.10

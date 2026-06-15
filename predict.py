@@ -1,6 +1,9 @@
 import argparse
 import json
 import math
+import shutil
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import cv2
@@ -12,15 +15,25 @@ from utils.config import load_config
 from utils.json_dataset import letterbox, list_image_files, scale_boxes_to_original
 
 
+DEFAULT_CHECKPOINT_URL = (
+    'https://huggingface.co/minhdang0901/yolo-detector/resolve/main/best.pth'
+)
+DEFAULT_CHECKPOINT2_URL = (
+    'https://huggingface.co/minhdang0901/yolo-detector/resolve/main/best2.pth'
+)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Run two-checkpoint ensemble inference by default.'
     )
-    parser.add_argument('--config', default='config/current_best.yaml')
+    parser.add_argument('--config', default='utils/hyperparameters.yaml')
     parser.add_argument('--image_dir', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--checkpoint', default='./models/best.pth')
     parser.add_argument('--checkpoint2', default='./models/best2.pth')
+    parser.add_argument('--checkpoint_url', default=DEFAULT_CHECKPOINT_URL)
+    parser.add_argument('--checkpoint2_url', default=DEFAULT_CHECKPOINT2_URL)
     parser.add_argument(
         '--single_model',
         action='store_true',
@@ -39,6 +52,37 @@ def parse_args():
     parser.add_argument('--ensemble_weight', default=0.50, type=float)
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu')
     return parser.parse_args()
+
+
+def ensure_checkpoint(checkpoint_path, download_url):
+    checkpoint_path = Path(checkpoint_path)
+    if checkpoint_path.is_file() and checkpoint_path.stat().st_size > 0:
+        return checkpoint_path
+    if not download_url:
+        raise FileNotFoundError(f'Checkpoint not found: {checkpoint_path}')
+
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = checkpoint_path.with_suffix(checkpoint_path.suffix + '.part')
+    print(f'downloading checkpoint from {download_url}')
+    try:
+        request = urllib.request.Request(
+            download_url,
+            headers={'User-Agent': 'object-detection-exam/2026'},
+        )
+        with urllib.request.urlopen(request) as response:
+            with temporary_path.open('wb') as output:
+                shutil.copyfileobj(response, output, length=1024 * 1024)
+        if temporary_path.stat().st_size == 0:
+            raise RuntimeError(f'Downloaded checkpoint is empty: {download_url}')
+        temporary_path.replace(checkpoint_path)
+    except (OSError, urllib.error.URLError) as error:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError(
+            f'Unable to download checkpoint from {download_url}: {error}'
+        ) from error
+
+    print(f'saved checkpoint to {checkpoint_path}')
+    return checkpoint_path
 
 
 def load_model(checkpoint_path, device):
@@ -255,7 +299,8 @@ def main():
     args = parse_args()
     config = load_config(args.config)
     device = torch.device(args.device)
-    model, classes, checkpoint_input_size = load_model(args.checkpoint, device)
+    checkpoint_path = ensure_checkpoint(args.checkpoint, args.checkpoint_url)
+    model, classes, checkpoint_input_size = load_model(checkpoint_path, device)
     input_size = args.input_size or checkpoint_input_size or config['model']['input_size']
     confidence = args.confidence if args.confidence is not None else config['inference']['confidence']
     iou = args.iou if args.iou is not None else config['inference']['iou']
@@ -266,7 +311,11 @@ def main():
     if not args.single_model:
         if not args.checkpoint2:
             raise ValueError('--checkpoint2 is required unless --single_model is used')
-        model2, classes2, checkpoint_input_size2 = load_model(args.checkpoint2, device)
+        checkpoint2_path = ensure_checkpoint(
+            args.checkpoint2,
+            args.checkpoint2_url,
+        )
+        model2, classes2, checkpoint_input_size2 = load_model(checkpoint2_path, device)
         if classes2 != classes:
             raise ValueError('Both checkpoints must use the same classes')
         max_detections2 = args.max_detections2
